@@ -1,0 +1,421 @@
+I ran these commands to start of this lab:
+#+BEGIN_SRC bash
+samuelbanya@Samuels-MBP ~/hub/Development/code/phase-3/phase-3-sinatra-with-active-record-post-patch-delete $
+ bundle install
+Fetching gem metadata from https://rubygems.org/.............
+Resolving dependencies...
+Using rake 13.0.6
+Using concurrent-ruby 1.1.9
+Using rb-fsevent 0.11.0
+Using method_source 1.0.0
+Using bundler 2.2.23
+Using zeitwerk 2.4.2
+Using ruby2_keywords 0.0.5
+Using rspec-support 3.10.2
+Using rspec-json_expectations 2.2.0
+Using tilt 2.0.10
+Using sqlite3 1.4.2
+Using i18n 1.8.10
+Using tzinfo 2.0.4
+Using rack 2.2.3
+Using rspec-core 3.10.1
+Using diff-lcs 1.4.4
+Using database_cleaner-core 2.0.1
+Using rack-protection 2.1.0
+Using rack-test 1.1.0
+Using require_all 3.0.0
+Using rspec-expectations 3.10.1
+Using mustermann 1.1.1
+Using faker 2.18.0
+Fetching rack-contrib 2.3.0
+Using sinatra 2.1.0
+Using ffi 1.15.3
+Using minitest 5.14.4
+Using rspec-mocks 3.10.2
+Using activesupport 6.1.4
+Using rb-inotify 0.10.1
+Using activemodel 6.1.4
+Using rspec 3.10.0
+Using coderay 1.1.3
+Using activerecord 6.1.4
+Using listen 3.5.1
+Using database_cleaner-active_record 2.0.1
+Using pry 0.14.1
+Using rerun 0.13.1
+Using sinatra-activerecord 2.0.23
+Using database_cleaner 2.0.1
+Installing rack-contrib 2.3.0
+Bundle complete! 14 Gemfile dependencies, 40 gems now installed.
+Use `bundle info [gemname]` to see where a bundled gem is installed.
+samuelbanya@Samuels-MBP ~/hub/Development/code/phase-3/phase-3-sinatra-with-active-record-post-patch-delete $
+ bundle exec rake db:migrate db:seed
+== 20210719113216 CreateGames: migrating ======================================
+-- create_table(:games)
+   -> 0.0016s
+== 20210719113216 CreateGames: migrated (0.0017s) =============================
+
+== 20210719113221 CreateReviews: migrating ====================================
+-- create_table(:reviews)
+   -> 0.0007s
+== 20210719113221 CreateReviews: migrated (0.0007s) ===========================
+
+== 20210719142820 CreateUsers: migrating ======================================
+-- create_table(:users)
+   -> 0.0009s
+== 20210719142820 CreateUsers: migrated (0.0009s) =============================
+== 20210719142825 AddUserIdToReviews: migrating ===============================
+-- add_column(:reviews, :user_id, :integer)
+   -> 0.0007s
+== 20210719142825 AddUserIdToReviews: migrated (0.0008s) ======================
+
+🌱 Seeding data...
+🌱 Done seeding!
+#+END_SRC
+
+I then ran this command:
+#+BEGIN_SRC bash
+bundle exec rake server
+#+END_SRC
+
+I then modified the contents of the 'app/controllers/application_controller.rb' file to be the following:
+#+begin_src ruby
+class ApplicationController < Sinatra::Base
+  set :default_content_type, 'application/json'
+
+  get '/games' do
+    games = Game.all.order(:title).limit(10)
+    games.to_json
+  end
+
+  get '/games/:id' do
+    game = Game.find(params[:id])
+
+    game.to_json(only: [:id, :title, :genre, :price], include: {
+      reviews: { only: [:comment, :score], include: {
+        user: { only: [:name] }
+      } }
+    })
+  end
+
+  # NOTE: New 'delete' route:
+  delete "/reviews/:id" do
+    # Find the review using the ID
+    review = Review.find(params[:id])
+    # Delete the review
+    review.destroy()
+    # Send a response with the deleted review as JSON
+    review.to_json()
+  end
+
+end
+#+end_src
+
+I then used restarted the 'bundle exec rake server' process, and then used the following settings in Postman to make a 'GET' request accordingly;
+- Method: DELETE
+- URL: http://localhost:9292/reviews/1
+
+This resulted in this SQL command being run successfully in terminal:
+#+begin_src bash
+D, [2022-09-17T16:48:01.140123 #18767] DEBUG -- :   Review Destroy (0.4ms)  DELETE FROM "reviews" WHERE "reviews"."id" = ?  [["id", 1]]
+#+end_src
+
+I then modified the 'app/controllers/application_controller.rb' file to include the following 'post' route for the '/reviews' API endpoint:
+#+begin_src ruby
+require "pry"
+
+class ApplicationController < Sinatra::Base
+  set :default_content_type, 'application/json'
+
+  # NEW:
+  post "/reviews" do
+    binding.pry()
+  end
+
+  get '/games' do
+    games = Game.all.order(:title).limit(10)
+    games.to_json
+  end
+
+  get '/games/:id' do
+    game = Game.find(params[:id])
+
+    game.to_json(only: [:id, :title, :genre, :price], include: {
+      reviews: { only: [:comment, :score], include: {
+        user: { only: [:name] }
+      } }
+    })
+  end
+
+  # NOTE: New 'delete' route:
+  delete "/reviews/:id" do
+    # Find the review using the ID
+    review = Review.find(params[:id])
+    # Delete the review
+    review.destroy()
+    # Send a response with the deleted review as JSON
+    review.to_json()
+  end
+
+end
+
+#+end_src
+
+I then acknowledged that there was 'middleware' present that helped convert the JSON string to a Ruby hash within the 'config.ru' file:
+#+begin_src ruby
+require_relative './config/environment'
+
+# Parse JSON from the request body into the params hash
+use Rack::JSONBodyParser
+
+run ApplicationController
+#+end_src
+
+I then sent Postman the following request:
+- Method: POST
+- URL: http://localhost:9292/reviews
+- Body:
+#+begin_src json
+{
+    "id": 1,
+    "score": 10,
+    "comment": "Great game.",
+    "game_id": 1,
+    "user_id": 1
+}
+#+end_src
+
+This then got into a related 'Pry' breakpoint session which I then interacted in the following manner:
+#+begin_src bash
+samuelbanya@Samuels-MBP ~/hub/Development/code/phase-3/phase-3-sinatra-with-active-record-post-patch-delete $ bundle exec rake server
+
+16:59:56 [rerun] Phase-3-sinatra-with-active-record-post-patch-delete launched
+16:59:56 [rerun] Rerun (19082) running Phase-3-sinatra-with-active-record-post-patch-delete (19093)
+[2022-09-17 16:59:57] INFO  WEBrick 1.6.1
+[2022-09-17 16:59:57] INFO  ruby 2.7.4 (2021-07-07) [x86_64-darwin21]
+[2022-09-17 16:59:57] INFO  WEBrick::HTTPServer#start: pid=19093 port=9292
+16:59:58 [rerun] Watching . for **/*.{rb,js,coffee,css,scss,sass,erb,html,haml,ru,yml,slim,md,feature,c,h} with Darwin adapter
+
+^A^BFrom:^A^B /Users/samuelbanya/hub/Development/code/phase-3/phase-3-sinatra-with-active-record-post-patch-delete/app/controllers/application_controller.rb:8 self.POST /reviews:
+
+     3: class ApplicationController < Sinatra::Base
+     4:   set :default_content_type, 'application/json'
+     5:
+     6:   # NEW:
+     7:   post "/reviews" do
+ =>  8:     binding.pry()
+     9:   end
+    10:
+...skipping...
+
+^A^BFrom:^A^B /Users/samuelbanya/hub/Development/code/phase-3/phase-3-sinatra-with-active-record-post-patch-delete/app/controllers/application_controller.rb:8 self.POST /reviews:
+
+     3: class ApplicationController < Sinatra::Base
+     4:   set :default_content_type, 'application/json'
+     5:
+     6:   # NEW:
+     7:   post "/reviews" do
+ =>  8:     binding.pry()
+     9:   end
+    10:
+    11:   get '/games' do
+    12:     games = Game.all.order(:title).limit(10)
+    13:     games.to_json
+
+[1] pry(#<ApplicationController>)> params
+=> {"id"=>1, "score"=>10, "comment"=>"Great game.", "game_id"=>1, "user_id"=>1}
+[2] pry(#<ApplicationController>)> params[:score]
+=> 10
+[3] pry(#<ApplicationController>)> params[:user_id]
+=> 1
+[4] pry(#<ApplicationController>)> exit
+::1 - - [17/Sep/2022:17:01:42 -0500] "POST /reviews HTTP/1.1" 200 - 100.6678
+^C[2022-09-17 17:01:44] INFO  going to shutdown ...
+
+17:01:44 [rerun] Phase-3-sinatra-with-active-record-post-patch-delete stopping
+#+end_src
+
+I then modified the contents of the 'app/controllers/application_controller.rb' file to finish the 'post' route for the '/reviews' endpoint:
+#+begin_src ruby
+require "pry"
+
+class ApplicationController < Sinatra::Base
+  set :default_content_type, 'application/json'
+
+  # NEW:
+  post "/reviews" do
+    # NOTE: This was commented out since we only needed to see how we
+    # could utilize the given parameters accordingly:
+    # binding.pry()
+    review = Review.create(
+      score: params[:score],
+      comment: params[:comment],
+      game_id: params[:game_id],
+      user_id: params[:user_id]
+    )
+    review.to_json()
+  end
+
+  get '/games' do
+    games = Game.all.order(:title).limit(10)
+    games.to_json
+  end
+
+  get '/games/:id' do
+    game = Game.find(params[:id])
+
+    game.to_json(only: [:id, :title, :genre, :price], include: {
+      reviews: { only: [:comment, :score], include: {
+        user: { only: [:name] }
+      } }
+    })
+  end
+
+  # NOTE: New 'delete' route:
+  delete "/reviews/:id" do
+    # Find the review using the ID
+    review = Review.find(params[:id])
+    # Delete the review
+    review.destroy()
+    # Send a response with the deleted review as JSON
+    review.to_json()
+  end
+
+end
+#+end_src
+
+I then re-ran the same Postman request which resulted in the new review being created successfully:
+- Method: POST
+- URL: http://localhost:9292/reviews
+- Body:
+#+begin_src json
+{
+    "id": 1,
+    "score": 10,
+    "comment": "Great game.",
+    "game_id": 1,
+    "user_id": 1
+}
+#+end_src
+
+Related output from Postman which showed that a new review was created as per the 'created_at', 'updated_at' fields, as well as the new 'id' value associated with the new review:
+#+begin_src bash
+{
+    "id": 147,
+    "score": 10,
+    "comment": "Great game.",
+    "game_id": 1,
+    "created_at": "2022-09-17T22:05:46.751Z",
+    "updated_at": "2022-09-17T22:05:46.751Z",
+    "user_id": 1
+}
+#+end_src
+
+I then modified the contents of the 'app/controllers/application_controller.rb' file to handle the 'patch' route:
+#+begin_src ruby
+require "pry"
+
+class ApplicationController < Sinatra::Base
+  set :default_content_type, 'application/json'
+
+  get '/games' do
+    games = Game.all.order(:title).limit(10)
+    games.to_json
+  end
+
+  get '/games/:id' do
+    game = Game.find(params[:id])
+
+    game.to_json(only: [:id, :title, :genre, :price], include: {
+      reviews: { only: [:comment, :score], include: {
+        user: { only: [:name] }
+      } }
+    })
+  end
+
+  # NOTE: New 'delete' route:
+  delete "/reviews/:id" do
+    # Find the review using the ID
+    review = Review.find(params[:id])
+    # Delete the review
+    review.destroy()
+    # Send a response with the deleted review as JSON
+    review.to_json()
+  end
+
+  # NOTE:
+  # This handles the 'post' route to create a new route when a user on the
+  # front end of the application decides to pass in parameters to create a
+  # new review:
+  post "/reviews" do
+    # NOTE: This was commented out since we only needed to see how we
+    # could utilize the given parameters accordingly:
+    # binding.pry()
+    review = Review.create(
+      score: params[:score],
+      comment: params[:comment],
+      game_id: params[:game_id],
+      user_id: params[:user_id]
+    )
+    review.to_json()
+  end
+
+  # NOTE;
+  # This handles the 'patch' route in case a user wants to update a specific review:
+  # NOTE: The assignment doesn't really mention this but they really only want to
+  # update the ':comment' and ':score' symbols in this scenario for the 'patch'
+  # request:
+  patch "/reviews/:id" do
+    review = Review.find(params[:id])
+
+    # First attempt:
+    # review[:score] = params[:score]
+    # review[:comment] = params[:comment]
+    # review[:game_id] = params[:game_id]
+    # review[:user_id] = params[:user_id]
+    # review.to_json()
+
+    # Second attempt:
+    review.update(
+      score: params[:score],
+      comment: params[:comment]
+    )
+    review.to_json()
+  end
+
+end
+#+end_src
+
+I then tested out the 'patch' route within Postman with the following action:
+- Method: "PATCH"
+- URL: http://localhost:9292/reviews/2
+- Headers > Content-Type: "application/json"
+- Body:
+#+begin_src json
+{
+    "score": 1,
+    "comment": "Changed my mind, this game is terrible."
+}
+#+end_src
+
+This resulted in the following JSON response:
+#+begin_src json
+{
+    "score": 1,
+    "comment": "Changed my mind, this game is terrible.",
+    "id": 2,
+    "game_id": 1,
+    "created_at": "2022-09-17T21:05:04.150Z",
+    "updated_at": "2022-09-17T22:40:26.563Z",
+    "user_id": 3
+}
+#+end_src
+
+<2022-09-17 Sat 17:44>: NOTE:
+- Annoyingly enough, the creator of the assignment didn't realize that they already deleted the first record in the beginning of the assignment hence I had to use the 'Patch' route for the second review instead.
+- I created a new issue on their GitHub issues page here to reflect this change:
+- https://github.com/learn-co-curriculum/phase-3-sinatra-with-active-record-post-patch-delete/issues/5
+
+<2022-09-17 Sat 17:46>: NOTE:
+- The assignment's reason for only updating the review's score and comment is as follows:
+- Notice we're only updating the score and comment:
+- It would be strange to change which user left a review, or which game a review was left for.
